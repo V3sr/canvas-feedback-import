@@ -139,7 +139,7 @@
     lh.id = 'cfi-launcher-host';
     const ls = lh.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `button{position:fixed;right:20px;bottom:20px;z-index:2147482999;display:flex;align-items:center;gap:8px;
+    style.textContent = `button{position:fixed;right:20px;bottom:84px;z-index:2147482999;display:flex;align-items:center;gap:8px;
       padding:10px 16px;border-radius:999px;border:0;background:#0b5cad;color:#fff;font:600 14px/1 system-ui,-apple-system,"Segoe UI",sans-serif;
       box-shadow:0 8px 24px rgba(10,20,35,.25);cursor:pointer}button:hover{filter:brightness(1.08)}
       button:focus-visible{outline:3px solid #ffc43d;outline-offset:2px}`;
@@ -453,6 +453,7 @@
     if (heldBack) facts.push(`${plural(heldBack, 'change')} ticked off for you to check`);
     if (p.counts.alreadyPosted) facts.push(`${plural(p.counts.alreadyPosted, 'comment')} already in Canvas, skipped`);
     if (p.counts.unchanged) facts.push(`${plural(p.counts.unchanged, 'grade')} already match Canvas`);
+    if (p.counts.skippedRows) facts.push(`${plural(p.counts.skippedRows, 'Student View "Test Student" row')} ignored`);
     if (p.downloadedAt) facts.push(`Template downloaded ${p.downloadedAt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
 
     out.push(h('section', { class: 'summary' },
