@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback Import Guide</title>
+<style>
+  :root { --ink:#17212f; --muted:#5b6676; --line:#dde3ea; --accent:#0b5cad; --chip:#eef2f7; --hl:#fff4d6; --hl2:#e5f0fb; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f6f8fb; color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 36px 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  ol, ul { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  code { background: var(--chip); padding: 1px 6px; border-radius: 6px; font-size: 14px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  table { border-collapse: collapse; font-size: 14px; min-width: 720px; width: 100%; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f3f7; font-weight: 650; white-space: nowrap; }
+  .g { background: var(--hl2); }
+  .f { background: var(--hl); }
+  .rules td:first-child { white-space: nowrap; font-weight: 600; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--line); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tip { border-left: 4px solid var(--accent); background: #fff; padding: 10px 14px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Feedback CSV format</h1>
+  <p class="sub">How to fill in the spreadsheet so grades and written feedback go into Canvas together.</p>
+
+  <div class="card">
+    <ol>
+      <li>Open your Canvas course and click the extension button.</li>
+      <li><strong>Get template:</strong> tick the lab or assessment you're grading (the ones due closest to today are at the top) and download.</li>
+      <li>Open the file in Excel or Google Sheets. Type grades and feedback as you go.</li>
+      <li>Save as CSV. In Excel: <strong>File &gt; Save As &gt; CSV UTF-8</strong>. In Google Sheets: <strong>File &gt; Download &gt; CSV</strong>.</li>
+      <li><strong>Upload &amp; post:</strong> choose the file, check the preview, and post.</li>
+    </ol>
+  </div>
+
+  <h2>What the template looks like</h2>
+  <div class="scroll">
+    <table>
+      <tr><th>Student</th><th>ID</th><th>SIS User ID</th><th>SIS Login ID</th><th>Section</th><th class="g">Lab 3 (48213)</th><th class="f">Lab 3 Feedback [48213]</th></tr>
+      <tr><td>Points Possible</td><td></td><td></td><td></td><td class="muted">Template downloaded … (keep this)</td><td class="g">10</td><td class="f"></td></tr>
+      <tr><td>Chen, Amy</td><td>10492</td><td>12345678</td><td>achen</td><td>L1A</td><td class="g">8.5</td><td class="f">Good technique. Label your flasks next time.</td></tr>
+      <tr><td>Park, Sam</td><td>10493</td><td>23456789</td><td>spark</td><td>L1A</td><td class="g">7</td><td class="f"></td></tr>
+      <tr><td>Singh, Priya</td><td>10494</td><td>34567890</td><td>psingh</td><td>L1B</td><td class="g">EX</td><td class="f">Excused, medical note received.</td></tr>
+    </table>
+  </div>
+  <p class="legend"><span><span class="sw g"></span>Grade column</span><span><span class="sw f"></span>Feedback column</span></p>
+
+  <h2>The rules</h2>
+  <div class="scroll">
+    <table class="rules">
+      <tr><td>Blank cell</td><td>Nothing happens. A blank grade never erases a grade, and a blank feedback cell posts nothing.</td></tr>
+      <tr><td>Grades</td><td>Numbers like <code>8</code> or <code>8.5</code> (use a period, not a comma). <code>85%</code> also works. Complete/incomplete assignments take <code>complete</code> or <code>incomplete</code>. Type <code>EX</code> to excuse a student.</td></tr>
+      <tr><td>Feedback</td><td>Any text. Each cell becomes one comment on that student's submission. For a new line inside a cell, press Alt+Enter (Windows) or Option+Return (Mac).</td></tr>
+      <tr><td>Keep together</td><td>The <strong>Student</strong> and <strong>ID</strong> columns. Each row's name is checked against its ID, so if rows get shuffled, nothing is posted to the wrong person. Sort the whole sheet, never just one column.</td></tr>
+      <tr><td>Don't edit</td><td>The column headers (the numbers in brackets link them to Canvas) and the "Template downloaded" note.</td></tr>
+      <tr><td>Fine to change</td><td>Delete students you're not grading, filter by section, reorder columns.</td></tr>
+    </table>
+  </div>
+
+  <h2>Excel gotchas</h2>
+  <ul>
+    <li><strong>Feedback that starts with - or + or =</strong> turns into <code>#NAME?</code>. Start with a letter, or type <code>'</code> first (for example <code>'- check your labels</code>). The tool catches this and won't post it.</li>
+    <li><strong>Scores like 8/10</strong> can turn into dates (8-Oct). Type just <code>8</code>.</li>
+    <li><strong>Decimals</strong> are saved the way they're displayed. If a column shows no decimals, 8.5 saves as 9. Widen the format before saving.</li>
+    <li>If Excel asks about keeping the CSV format when you save, choose <strong>Keep</strong> / <strong>Use CSV</strong>.</li>
+  </ul>
+
+  <h2>Good to know</h2>
+  <ul>
+    <li><strong>Nothing is saved until you confirm.</strong> The preview shows each grade change (old → new) and each comment. Anything that looks off is unticked for you to check.</li>
+    <li><strong>Uploading the same file twice is safe.</strong> Comments already on a submission are skipped, and matching grades are left alone.</li>
+    <li><strong>Newer grades are protected.</strong> If someone changes a grade in Canvas after you downloaded the template, that grade isn't overwritten. The preview tells you which ones.</li>
+    <li><strong>Who sees it:</strong> if the assignment posts grades automatically, students see new grades and comments right away and may get a notification. If grades are posted manually, they see them when you post grades.</li>
+    <li><strong>Comments show your name.</strong> They're posted from whoever is signed in to Canvas.</li>
+    <li><strong>Group assignments graded as a group:</strong> comments are posted to each student, but group grades should be set in SpeedGrader.</li>
+    <li><strong>Rubrics and quizzes:</strong> grades set here skip the rubric, and a quiz may re-score itself. The template marks these.</li>
+    <li><strong>Not supported:</strong> anonymous or moderated grading, unpublished assignments, and closed grading periods.</li>
+    <li><strong>Several TAs?</strong> Each TA can download a template for just their section and upload it separately.</li>
+  </ul>
+
+  <p class="tip">Grading on paper? Fill in the sheet afterwards and upload it once. Grading on an iPad? Use the Google Sheets app, then download as CSV on a computer.</p>
+</main>
+</body>
+</html>
