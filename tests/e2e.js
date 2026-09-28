@@ -34,7 +34,8 @@ const students = [
 const subs = {};
 for (const a of assignments) for (const s of students) subs[`${a.id}:${s.id}`] = { assignment_id: a.id, user_id: s.id, score: null, entered_score: null, grade: null, entered_grade: null, excused: false, graded_at: null, posted_at: null, submission_comments: [] };
 Object.assign(subs['101:1'], { score: 6, entered_score: 6, grade: '6', entered_grade: '6', graded_at: '2026-09-01T00:00:00Z', posted_at: '2026-09-01T00:00:00Z' });
-const log = { puts: [], csrfOk: true };
+const log = { puts: [], csrfOk: true, edits: 0, deletes: 0 };
+let nextCommentId = 1000;
 
 function json(route, body, headers) {
   return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(body) });
@@ -63,6 +64,15 @@ async function handle(route) {
     const withC = q.getAll('include[]').includes('submission_comments');
     return json(route, Object.values(subs).filter((s) => ids.includes(s.assignment_id)).map((s) => withC ? s : Object.assign({}, s, { submission_comments: undefined })));
   }
+  const cm = p.match(/^\/api\/v1\/courses\/555\/assignments\/(\d+)\/submissions\/(\d+)\/comments\/(\d+)$/);
+  if (cm) {
+    const s = subs[`${cm[1]}:${cm[2]}`];
+    const c = s.submission_comments.find((x) => x.id === cm[3]);
+    if (!c) return route.fulfill({ status: 404, body: '{}' });
+    if (req.method() === 'PUT') { log.edits++; c.comment = JSON.parse(req.postData()).comment; }
+    if (req.method() === 'DELETE') { log.deletes++; s.submission_comments = s.submission_comments.filter((x) => x !== c); }
+    return json(route, c);
+  }
   const m = p.match(/^\/api\/v1\/courses\/555\/assignments\/(\d+)\/submissions\/(\d+)$/);
   if (m) {
     const s = subs[`${m[1]}:${m[2]}`];
@@ -78,7 +88,7 @@ async function handle(route) {
         else { s.score = Number(g); s.entered_score = Number(g); s.grade = g; s.entered_grade = g; }
         s.graded_at = new Date().toISOString(); s.grader_id = '42';
       }
-      if (body.comment && body.comment.text_comment) s.submission_comments.push({ id: String(Math.random()), comment: body.comment.text_comment });
+      if (body.comment && body.comment.text_comment) s.submission_comments.push({ id: String(nextCommentId++), author_id: 42, comment: body.comment.text_comment });
     }
     return json(route, s);
   }
@@ -195,8 +205,43 @@ async function handle(route) {
   const again = await page.locator('.summary').innerText();
   console.log('re-upload summary:', again.replace(/\n/g, ' | '));
   await page.screenshot({ path: path.join(SHOTS, '5-reupload.png') });
-  checks.push(['re-upload has nothing ticked (only the held TA-changed grade)', /Nothing ticked to post/.test(again) && /1 change ticked off/.test(again)]);
+  checks.push(['re-upload has nothing ticked (only the held TA-changed grade)', /Nothing ticked to import/.test(again) && /1 change ticked off/.test(again)]);
   checks.push(['no extra writes', log.puts.length === putsBefore]);
+
+  // Cancel clears the queued upload and shows the last-import box.
+  await page.locator('#cfi-clear').click();
+  checks.push(['Cancel clears the upload', await page.getByText('Choose your filled-in CSV').isVisible()]);
+  checks.push(['Last import box with undo shown', await page.locator('#cfi-undo').isVisible()]);
+  await page.screenshot({ path: path.join(SHOTS, '7-cleared.png') });
+
+  // Fix a typo in Amy's feedback and re-import with "Replace your last comment".
+  const fixedRows = csv.parse(csv.decodeBytes(fs.readFileSync(filled)).text);
+  fixedRows.find((r) => r[1] === '1')[col('Lab 1: Buffers Feedback [101]')] = 'Good technique. Label your flasks next time!';
+  const fixed = path.join(SHOTS, 'fixed.csv');
+  fs.writeFileSync(fixed, csv.serialize(fixedRows));
+  await page.locator('#cfi-mode-replace').check();
+  await page.locator('#cfi-file').setInputFiles(fixed);
+  await page.getByRole('heading', { name: 'Review' }).waitFor();
+  const replSummary = await page.locator('.summary').innerText();
+  console.log('replace summary:', replSummary.replace(/\n/g, ' | '));
+  checks.push(['Overview flags the replacement', /1 comment will replace your earlier one/.test(replSummary)]);
+  await page.getByRole('heading', { name: 'Review' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(SHOTS, '8-replace-preview.png') });
+  await page.locator('#cfi-post').click();
+  const confirm2 = await page.locator('.foot.confirm').innerText();
+  checks.push(['Confirm says Import, not Post', /^Import /.test(confirm2) && /Yes, import/.test(confirm2)]);
+  await page.screenshot({ path: path.join(SHOTS, '9-confirm-import.png') });
+  await page.locator('#cfi-yes').click();
+  await page.locator('#cfi-again').waitFor({ timeout: 20000 });
+  checks.push(['Amy comment replaced, not doubled', JSON.stringify(c('101:1')) === JSON.stringify(['Good technique. Label your flasks next time!'])]);
+  checks.push(['Edited via the comment endpoint', log.edits === 1]);
+
+  // Undo the replacement from the results screen.
+  await page.locator('#cfi-undo').click();
+  await page.locator('#cfi-undo-yes').click();
+  await page.getByText('Import undone').waitFor({ timeout: 20000 });
+  await page.screenshot({ path: path.join(SHOTS, '10-undone.png') });
+  checks.push(['Undo restores the earlier comment text', JSON.stringify(c('101:1')) === JSON.stringify(['Good technique.\nLabel your flasks next time.'])]);
 
   // Narrow viewport layout.
   await page.setViewportSize({ width: 390, height: 780 });

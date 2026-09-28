@@ -118,7 +118,7 @@ Files the tool can read:
 | `lib/csv.js` | Decoding, delimiter detection, parsing, writing |
 | `lib/plan.js` | Template building and upload checks (pure, tested) |
 | `lib/canvas-api.js` | Canvas REST calls with the session cookie and CSRF token |
-| `lib/apply.js` | Re-check, write, and read-back loop |
+| `lib/apply.js` | Re-check, write, read-back loop, and undo |
 | `tests/` | `node --test tests/*.test.js` (40 unit tests) and `tests/e2e.js` (Chromium plus mocked Canvas, 13 checks) |
 
 ## Check on a real sandbox course before rollout
@@ -139,6 +139,13 @@ These are Canvas behaviours the code relies on but that haven't been confirmed o
 
 ## Changelog
 
+- **0.4.0**
+  - Comment mode on upload: "Add a new comment" (default, keeps both, for multiple graders) or "Replace your last comment" (edits the uploader's own most recent comment). Replacements are counted in the overview and shown as old text struck through above the new text.
+  - Undo the last import (per course, kept in `chrome.storage.local`): restores the previous grades, removes added comments and restores replaced comment text, leaving anything changed since alone.
+  - Cancel button clears a queued upload.
+  - Wording says "Import", since Canvas's "post" means making grades visible: "Import to Canvas…", "Yes, import".
+  - An "Import feedback" button on the Gradebook page, and a real enrolled account named Test Student is no longer skipped.
+  - Checked live on the sandbox course: comment edit and delete endpoints, `posted_grade: ""` clears a grade, "85%" converts on points assignments, numbers remove excused, comment line breaks are stored as-is.
 - **0.3.0**
   - Due-date picker with a section filter.
   - Validation: name/ID check, sorted-column detection, newer-grade protection, and precision, date and decimal-comma handling.

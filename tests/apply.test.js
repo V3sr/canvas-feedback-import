@@ -98,3 +98,75 @@ test('late penalty: verify against entered score', async () => {
   const [r] = await applyAll(api, 'c', [change()], A);
   assert.strictEqual(r.status, 'done');
 });
+
+// ---------- replace + undo ----------
+const { buildUndoRecord, undoAll } = require('../lib/apply.js');
+const planLib = require('../lib/plan.js');
+
+function richApi(state) {
+  let nextId = 100;
+  const calls = { put: 0, edit: 0, del: 0 };
+  return {
+    calls,
+    async getSubmission(c, a, u) { return JSON.parse(JSON.stringify(state[`${a}:${u}`])); },
+    async updateSubmission(c, a, u, work) {
+      calls.put++;
+      const s = state[`${a}:${u}`];
+      if (work.grade) {
+        if (work.grade.excuse) { s.excused = true; s.entered_score = null; s.entered_grade = null; }
+        else if (work.grade.posted == null || work.grade.posted === '') { s.excused = false; s.entered_score = null; s.entered_grade = null; s.score = null; }
+        else { s.excused = false; s.entered_score = Number(work.grade.posted); s.score = s.entered_score; s.entered_grade = work.grade.posted; }
+      }
+      if (work.comment) s.comments.push({ id: String(nextId++), author_id: '42', text: work.comment });
+    },
+    async editComment(c, a, u, id, text) { calls.edit++; state[`${a}:${u}`].comments.find((x) => x.id === id).text = text; },
+    async deleteComment(c, a, u, id) { calls.del++; const s = state[`${a}:${u}`]; s.comments = s.comments.filter((x) => x.id !== id); },
+  };
+}
+
+test('replace mode edits my last comment, leaves the TA comment, and undo restores it', async () => {
+  const state = { '101:1': { entered_score: 6, score: 6, entered_grade: '6', comments: [
+    { id: '1', author_id: '42', text: 'Old typo feedback' }, { id: '2', author_id: '77', text: 'TA note' }] } };
+  const ctx = { assignmentsById: A, studentsById: { '1': { id: '1', sortable_name: 'Chen, Amy' } }, studentsBySis: {}, submissions: JSON.parse(JSON.stringify(state)), meId: '42' };
+  const rows = [['Student', 'ID', 'Lab 1 (101)', 'Lab 1 Feedback [101]'], ['Chen, Amy', '1', '8', 'Fixed feedback']];
+  A['101'].grading_type = 'points'; A['101'].points_possible = 10;
+  const p = planLib.buildPlan(rows, ctx, { commentMode: 'replace' });
+  assert.strictEqual(p.counts.replacing, 1);
+  assert.strictEqual(p.changes[0].replaceComment.oldText, 'Old typo feedback');
+  // plan.js leaves "from" as the current value; the file has no stamp, so the grade was held -> tick it to import.
+  const changes = p.changes.map((c) => Object.assign(c, { selected: true }));
+  const api = richApi(state);
+  const res = await applyAll(api, 'c', changes, A);
+  assert.ok(res.every((r) => r.status === 'done'), JSON.stringify(res.map((r) => r.message)));
+  assert.deepStrictEqual(state['101:1'].comments.map((c) => c.text), ['Fixed feedback', 'TA note']);
+  assert.strictEqual(state['101:1'].entered_score, 8);
+  assert.strictEqual(api.calls.edit, 1);
+
+  const record = buildUndoRecord('c', res, 'f.csv');
+  const undo = await undoAll(api, 'c', record, A);
+  assert.ok(undo.every((r) => r.status === 'done'), JSON.stringify(undo.map((r) => r.message)));
+  assert.deepStrictEqual(state['101:1'].comments.map((c) => c.text), ['Old typo feedback', 'TA note']);
+  assert.strictEqual(state['101:1'].entered_score, 6);
+});
+
+test('undo removes added comments, clears first-time grades, and skips anything changed since', async () => {
+  const state = {
+    '101:1': { entered_score: null, score: null, entered_grade: null, comments: [] },
+    '101:2': { entered_score: null, score: null, entered_grade: null, comments: [] },
+  };
+  const api = richApi(state);
+  const ch = (sid) => ({ key: `101:${sid}`, row: 2, studentId: sid, studentName: 'S' + sid, assignmentId: '101', assignmentName: 'Lab 1',
+    grade: { from: '', to: '9', posted: '9', number: 9 }, comment: 'Nice', warnings: [], selected: true });
+  const res = await applyAll(api, 'c', [ch('1'), ch('2')], A);
+  assert.ok(res.every((r) => r.status === 'done'));
+  const record = buildUndoRecord('c', res, 'f.csv');
+  assert.strictEqual(record.items.length, 2);
+  // Someone regrades student 2 after the import.
+  state['101:2'].entered_score = 7; state['101:2'].score = 7; state['101:2'].entered_grade = '7';
+  const undo = await undoAll(api, 'c', record, A);
+  assert.strictEqual(state['101:1'].entered_score, null);
+  assert.deepStrictEqual(state['101:1'].comments, []);
+  assert.strictEqual(state['101:2'].entered_score, 7);
+  assert.deepStrictEqual(state['101:2'].comments, []);
+  assert.match(undo.find((r) => r.key === '101:2').message, /grade left at 7/);
+});

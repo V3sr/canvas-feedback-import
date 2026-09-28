@@ -46,6 +46,13 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
   function plural(n, word, pl) { return `${n} ${n === 1 ? word : (pl || word + 's')}`; }
+  // "2 comments and 1 grade", dropping any zero part.
+  function whatText(nComments, nGrades) {
+    const parts = [];
+    if (nComments) parts.push(plural(nComments, 'comment'));
+    if (nGrades) parts.push(plural(nGrades, 'grade'));
+    return parts.join(' and ') || 'nothing';
+  }
   function courseLabel() { return state.course ? (state.course.course_code || state.course.name) : 'this course'; }
   function speedGraderUrl(aId, uId) { return `/courses/${courseId}/gradebook/speed_grader?assignment_id=${aId}&student_id=${uId}`; }
 
@@ -98,6 +105,10 @@
     progress: { done: 0, total: 0 },
     results: null,
     focusAfterRender: null,
+    commentMode: 'add',
+    lastImport: null,
+    undoConfirming: false,
+    runKind: 'import',
   };
 
   let host, shadow, body, live, lastFocusOnPage = null;
@@ -122,6 +133,8 @@
     state.open = next;
     if (state.open && !host) build();
     if (host) host.style.display = state.open ? '' : 'none';
+    const launcher = document.getElementById('cfi-launcher-host');
+    if (launcher) launcher.style.display = state.open ? 'none' : '';
     if (state.open) {
       state.focusAfterRender = 'cfi-title';
       render();
@@ -174,6 +187,7 @@
       state.course = course;
       state.me = me;
       setAssignments(assignments);
+      await loadLastImport();
       loadStudentsFresh().then(render).catch(() => {});
     } catch (e) {
       state.loadError = e.message;
@@ -248,7 +262,7 @@
 
   function tabs() {
     const ids = ['export', 'import'];
-    const labels = { export: '1  Get template', import: '2  Upload & post' };
+    const labels = { export: '1  Get template', import: '2  Upload & import' };
     const onKey = (e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
       e.preventDefault();
@@ -360,19 +374,52 @@
 
     const parts = [concludedBanner()];
     if (state.alert) parts.push(errorBox(state.alert));
+    parts.push(dropZone());
+    if (!state.plan && !state.importBusy && state.lastImport && state.lastImport.items.length) parts.push(lastImportBox());
     parts.push(
-      dropZone(),
-      h('label', { class: 'check' },
-        h('input', { type: 'checkbox', id: 'cfi-update-grades', checked: state.updateGrades, disabled: state.importBusy,
-          onchange: (e) => { state.updateGrades = e.target.checked; if (state.lastFile) readFile(state.lastFile, true); } }),
-        'Also update grades from the file'),
-      h('p', { class: 'muted small indent' }, state.updateGrades
-        ? 'Blank grade cells are left alone. A grade only changes when it\'s different from Canvas.'
-        : 'Only feedback will be posted. No grades will change.'),
+      h('div', { class: 'opts' },
+        h('label', { class: 'check' },
+          h('input', { type: 'checkbox', id: 'cfi-update-grades', checked: state.updateGrades, disabled: state.importBusy,
+            onchange: (e) => { state.updateGrades = e.target.checked; if (state.lastFile) readFile(state.lastFile, true); } }),
+          'Also update grades from the file'),
+        h('p', { class: 'muted small indent' }, state.updateGrades
+          ? 'Blank grade cells are left alone. A grade only changes when it\'s different from Canvas.'
+          : 'Only feedback will be imported. No grades will change.'),
+        h('fieldset', { class: 'mode' },
+          h('legend', null, 'If you already left a comment for a student'),
+          [['add', 'Add a new comment', 'Keeps both. Good when several graders leave feedback.'],
+            ['replace', 'Replace your last comment', 'Fixes a mistake without doubling up. Only your own comments are changed.']].map(([v, label, hint]) =>
+            h('label', { class: 'radio' },
+              h('input', { type: 'radio', name: 'cfi-mode', id: 'cfi-mode-' + v, value: v, checked: state.commentMode === v, disabled: state.importBusy,
+                onchange: () => { state.commentMode = v; state.focusAfterRender = 'cfi-mode-' + v; if (state.lastFile) readFile(state.lastFile, true); else render(); } }),
+              h('span', null, h('span', null, label), h('span', { class: 'muted small block' }, hint)))))),
     );
     if (state.importBusy) parts.push(h('p', { class: 'muted pad', role: 'status' }, 'Checking the file against Canvas…'));
     if (state.plan && !state.importBusy) parts.push(planView());
     return parts;
+  }
+
+  function lastImportBox() {
+    const r = state.lastImport;
+    const when = new Date(r.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return h('section', { class: 'box last' },
+      h('div', null, h('strong', null, 'Last import'), h('span', { class: 'muted small' }, ` · ${when}${r.fileName ? ' · ' + r.fileName : ''}`)),
+      h('p', { class: 'muted small' }, `${plural(r.items.length, 'change')}. Imported the wrong thing? You can undo it.`),
+      undoArea());
+  }
+
+  function undoArea() {
+    const r = state.lastImport;
+    if (!r || !r.items.length) return null;
+    if (!state.undoConfirming) {
+      return h('button', { class: 'ghost', id: 'cfi-undo', onclick: () => { state.undoConfirming = true; state.focusAfterRender = 'cfi-undo-title'; render(); } }, 'Undo this import…');
+    }
+    return h('div', { class: 'undo-confirm', role: 'alertdialog', 'aria-labelledby': 'cfi-undo-title' },
+      h('p', { id: 'cfi-undo-title', tabindex: '-1' }, h('strong', null, `Undo ${plural(r.items.length, 'change')}?`)),
+      h('p', { class: 'small' }, 'Grades go back to what they were before the import, comments it added are removed, and comments it replaced get their earlier text back. Anything changed in Canvas since then is left alone.'),
+      h('div', { class: 'row-btns' },
+        h('button', { class: 'ghost', id: 'cfi-undo-cancel', onclick: () => { state.undoConfirming = false; state.focusAfterRender = 'cfi-undo'; render(); } }, 'Cancel'),
+        h('button', { class: 'primary danger', id: 'cfi-undo-yes', onclick: runUndo }, 'Yes, undo')));
   }
 
   function dropZone() {
@@ -388,6 +435,15 @@
     return [input, zone, state.fileNote ? h('p', { class: 'note' }, state.fileNote) : null];
   }
 
+  function clearUpload() {
+    state.uploadSeq++;
+    state.plan = null; state.fileName = ''; state.lastFile = null; state.fileNote = ''; state.alert = '';
+    state.confirming = false; state.importBusy = false; state.tickOverrides = new Map();
+    state.focusAfterRender = 'cfi-file';
+    render();
+    say('Upload cleared.');
+  }
+
   async function readFile(file, keepTicks) {
     const seq = ++state.uploadSeq;
     state.alert = '';
@@ -396,6 +452,7 @@
     state.fileNote = '';
     state.plan = null;
     state.confirming = false;
+    state.undoConfirming = false;
     if (!keepTicks) state.tickOverrides = new Map();
     if (/\.(xlsx|xls|numbers|ods)$/i.test(file.name)) {
       state.alert = 'That\'s a spreadsheet file, not a CSV. In Excel use File > Save As > "CSV UTF-8 (Comma delimited)". In Google Sheets use File > Download > CSV.';
@@ -424,7 +481,7 @@
       const plan = planLib.buildPlan(rows, {
         assignmentsById: state.assignmentsById, studentsById: byId, studentsBySis: bySis, submissions: subs,
         meId: state.me ? String(state.me.id) : null,
-      }, { updateGrades: state.updateGrades });
+      }, { updateGrades: state.updateGrades, commentMode: state.commentMode });
       plan.changes.forEach((c) => { if (state.tickOverrides.has(c.key)) c.selected = state.tickOverrides.get(c.key); });
       state.plan = plan;
       state.changeFilter = 'all'; state.changeSearch = '';
@@ -446,10 +503,12 @@
     const selected = p.changes.filter((c) => c.selected);
     const nComments = selected.filter((c) => c.comment).length;
     const nGrades = selected.filter((c) => c.grade).length;
+    const nReplacing = selected.filter((c) => c.comment && c.replaceComment).length;
     const heldBack = p.changes.length - selected.length;
     const out = [];
 
     const facts = [];
+    if (nReplacing) facts.push(h('li', { class: 'replace-fact' }, `${plural(nReplacing, 'comment')} will replace your earlier ${nReplacing === 1 ? 'one' : 'ones'}`));
     if (heldBack) facts.push(`${plural(heldBack, 'change')} ticked off for you to check`);
     if (p.counts.alreadyPosted) facts.push(`${plural(p.counts.alreadyPosted, 'comment')} already in Canvas, skipped`);
     if (p.counts.unchanged) facts.push(`${plural(p.counts.unchanged, 'grade')} already match Canvas`);
@@ -457,9 +516,9 @@
     if (p.downloadedAt) facts.push(`Template downloaded ${p.downloadedAt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
 
     out.push(h('section', { class: 'summary' },
-      h('div', { class: 'big' }, !p.changes.length ? 'Nothing new to post' : !selected.length ? 'Nothing ticked to post' : `${plural(nComments, 'comment')}, ${plural(nGrades, 'grade')}`),
-      selected.length ? h('div', { class: 'muted' }, `ready to post for ${plural(new Set(selected.map((c) => c.studentId)).size, 'student')}`) : null,
-      facts.length ? h('ul', { class: 'facts' }, facts.map((f) => h('li', null, f))) : null));
+      h('div', { class: 'big' }, !p.changes.length ? 'Nothing new to import' : !selected.length ? 'Nothing ticked to import' : whatText(nComments, nGrades).replace(/^./, (c) => c.toUpperCase())),
+      selected.length ? h('div', { class: 'muted' }, `ready to import for ${plural(new Set(selected.map((c) => c.studentId)).size, 'student')}`) : null,
+      facts.length ? h('ul', { class: 'facts' }, facts.map((f) => (typeof f === 'string' ? h('li', null, f) : f))) : null));
 
     const touched = p.assignments.map((a) => {
       const cs = selected.filter((c) => c.assignmentId === a.id);
@@ -479,7 +538,7 @@
       out.push(h('section', { class: 'box issues' },
         h('h3', null, errors.length ? `${plural(errors.length, 'problem')} to look at` : 'Notes'),
         errors.length ? h('p', { class: 'muted small' }, p.changes.length
-          ? 'These are skipped. Fix them in the file and upload it again (anything already posted is skipped), or post the rest now.'
+          ? 'These are skipped. Fix them in the file and upload it again (anything already imported is skipped), or import the rest now.'
           : 'Fix these in the file and upload it again.') : null,
         h('ul', null, [...errors, ...warnings].sort((x, y) => (x.level === y.level ? 0 : x.level === 'error' ? -1 : 1) || (x.row || 0) - (y.row || 0)).map((i) => h('li', { class: i.level },
           i.row && i.row > 1 ? h('span', { class: 'row' }, `Row ${i.row}`) : null, i.message)))));
@@ -497,6 +556,7 @@
     const shown = p.changes.filter((c) => {
       if (state.changeFilter === 'grades' && !c.grade) return false;
       if (state.changeFilter === 'comments' && !c.comment) return false;
+      if (state.changeFilter === 'replacing' && !c.replaceComment) return false;
       if (state.changeFilter === 'check' && !c.warnings.length && c.selected) return false;
       if (q && !(c.studentName.toLowerCase().includes(q) || c.assignmentName.toLowerCase().includes(q) || c.studentId === q)) return false;
       return true;
@@ -507,14 +567,17 @@
       state.confirming = false; state.focusAfterRender = id; render();
     };
     const needCheck = p.changes.filter((c) => c.warnings.length || !c.selected).length;
+    const replacing = p.changes.filter((c) => c.replaceComment).length;
+    const filters = [['all', 'Everything'], ['comments', 'Comments'], ['grades', 'Grade changes']];
+    if (replacing) filters.push(['replacing', `Replacing a comment (${replacing})`]);
+    filters.push(['check', `Needs a look (${needCheck})`]);
     return h('section', { class: 'box' },
       h('h3', null, 'Review'),
       h('div', { class: 'toolbar' },
         h('input', { id: 'cfi-csearch', class: 'search', type: 'search', placeholder: 'Search students', 'aria-label': 'Search students', value: state.changeSearch,
           oninput: (e) => { state.changeSearch = e.target.value; render(); } }),
         h('select', { id: 'cfi-cfilter', 'aria-label': 'Show', onchange: (e) => { state.changeFilter = e.target.value; state.focusAfterRender = 'cfi-cfilter'; render(); } },
-          [['all', 'Everything'], ['comments', 'Comments'], ['grades', 'Grade changes'], ['check', `Needs a look (${needCheck})`]].map(([v, l]) =>
-            h('option', { value: v, selected: state.changeFilter === v ? 'selected' : null }, l)))),
+          filters.map(([v, l]) => h('option', { value: v, selected: state.changeFilter === v ? 'selected' : null }, l)))),
       h('div', { class: 'selbar' },
         h('span', { class: 'muted small' }, `Showing ${shown.length} of ${p.changes.length}`),
         h('button', { class: 'link', id: 'cfi-tick-all', onclick: () => setAll(true, 'cfi-tick-all') }, 'Tick shown'),
@@ -528,59 +591,102 @@
             h('label', { for: id, class: 'who' }, h('strong', null, c.studentName), h('span', { class: 'muted small' }, ` · ${c.assignmentName}`)),
             h('div', { id: id + '-d' },
               c.grade ? h('div', { class: 'grade' }, 'Grade ', h('s', null, c.grade.from || 'blank'), ' → ', h('strong', null, c.grade.to)) : null,
+              c.comment && c.replaceComment ? h('div', { class: 'replace-label' }, 'Replaces your comment') : null,
+              c.comment && c.replaceComment ? h('div', { class: 'comment old' }, h('s', null, c.replaceComment.oldText)) : null,
               c.comment ? h('div', { class: 'comment' }, c.comment) : null,
               c.warnings.map((w) => h('div', { class: 'warnline' }, w)),
               h('div', { class: 'rowref' }, `Row ${c.row}`, c.visibleNow ? ' · seen right away' : ''))));
       })),
-      shown.length > 400 ? h('p', { class: 'muted small' }, 'Showing the first 400. Search to find others. Everything ticked is still posted.') : null);
+      shown.length > 400 ? h('p', { class: 'muted small' }, 'Showing the first 400. Search to find others. Everything ticked is still imported.') : null);
   }
 
   function footerView() {
-    if (state.tab !== 'import' || !state.plan || state.importBusy || state.applying || state.results || !state.plan.changes.length) return null;
+    if (state.tab !== 'import' || !state.plan || state.importBusy || state.applying || state.results) return null;
     if (isConcluded()) return null;
+    const cancel = h('button', { class: 'ghost', id: 'cfi-clear', onclick: clearUpload }, 'Cancel');
     const selected = state.plan.changes.filter((c) => c.selected);
     const nComments = selected.filter((c) => c.comment).length;
     const nGrades = selected.filter((c) => c.grade).length;
-    if (!selected.length) return h('footer', { class: 'foot' }, h('button', { class: 'primary', disabled: true }, 'Nothing ticked'));
+    if (!selected.length) return h('footer', { class: 'foot' }, cancel, h('button', { class: 'primary', disabled: true }, state.plan.changes.length ? 'Nothing ticked' : 'Nothing to import'));
     if (!state.confirming) {
-      return h('footer', { class: 'foot' },
+      return h('footer', { class: 'foot' }, cancel,
         h('button', { class: 'primary', id: 'cfi-post', onclick: () => { state.confirming = true; state.focusAfterRender = 'cfi-confirm-title'; render(); } },
-          `Post to Canvas…`));
+          'Import to Canvas…'));
     }
     const visibleNow = selected.filter((c) => c.visibleNow).length;
+    const nReplacing = selected.filter((c) => c.comment && c.replaceComment).length;
     const who = state.me && state.me.name ? state.me.name : 'you';
     return h('footer', { class: 'foot confirm', role: 'alertdialog', 'aria-labelledby': 'cfi-confirm-title', 'aria-describedby': 'cfi-confirm-desc' },
-      h('p', { id: 'cfi-confirm-title', tabindex: '-1' }, h('strong', null, `Post ${plural(nComments, 'comment')} and ${plural(nGrades, 'grade')} to ${courseLabel()}?`)),
+      h('p', { id: 'cfi-confirm-title', tabindex: '-1' }, h('strong', null, `Import ${whatText(nComments, nGrades)} to ${courseLabel()}?`)),
       h('div', { id: 'cfi-confirm-desc' },
         visibleNow ? h('p', { class: 'small' }, `${visibleNow === selected.length ? 'All of these are' : `${visibleNow} of these are`} visible to students right away, and students may get a notification.`)
           : h('p', { class: 'small' }, 'Students won\'t see any of this until you post grades.'),
-        nComments ? h('p', { class: 'muted small' }, `Comments will show as from ${who}.`) : null),
+        nReplacing ? h('p', { class: 'small' }, `${plural(nReplacing, 'earlier comment')} of yours will be replaced.`) : null,
+        nComments ? h('p', { class: 'muted small' }, `Comments will show as from ${who}. You can undo this import afterwards.`) : null),
       h('div', { class: 'row-btns' },
-        h('button', { class: 'ghost', id: 'cfi-cancel', onclick: () => { state.confirming = false; state.focusAfterRender = 'cfi-post'; render(); } }, 'Cancel'),
-        h('button', { class: 'primary', id: 'cfi-yes', onclick: runApply }, 'Yes, post')));
+        h('button', { class: 'ghost', id: 'cfi-cancel', onclick: () => { state.confirming = false; state.focusAfterRender = 'cfi-post'; render(); } }, 'Back'),
+        h('button', { class: 'primary', id: 'cfi-yes', onclick: runApply }, 'Yes, import')));
+  }
+
+  // ---------- last-import record (for undo) ----------
+  const storeKey = () => 'cfi-last-import-' + courseId;
+  async function loadLastImport() {
+    try {
+      const got = await chrome.storage.local.get(storeKey());
+      state.lastImport = got[storeKey()] || null;
+    } catch (e) { state.lastImport = null; }
+  }
+  async function saveLastImport(record) {
+    state.lastImport = record && record.items.length ? record : null;
+    try {
+      if (state.lastImport) await chrome.storage.local.set({ [storeKey()]: record });
+      else await chrome.storage.local.remove(storeKey());
+    } catch (e) { /* storage unavailable; undo still works until the page closes */ }
   }
 
   async function runApply() {
     const changes = state.plan.changes.filter((c) => c.selected);
-    state.confirming = false; state.applying = true; state.stopRequested = false;
+    state.confirming = false; state.applying = true; state.stopRequested = false; state.runKind = 'import';
     state.progress = { done: 0, total: changes.length };
     state.focusAfterRender = 'cfi-progress-title';
     render();
     const results = await apply.applyAll(canvas, courseId, changes, state.assignmentsById,
       (done, total) => { state.progress = { done, total }; updateProgress(); },
       () => state.stopRequested, 3);
+    await saveLastImport(apply.buildUndoRecord(courseId, results, state.fileName));
     state.applying = false;
     state.results = results;
     state.focusAfterRender = 'cfi-results-title';
     const ok = results.filter((r) => r.status === 'done').length;
     render();
-    say(`Finished. ${ok} of ${results.length} posted.`);
+    say(`Finished. ${ok} of ${results.length} imported.`);
+  }
+
+  async function runUndo() {
+    const record = state.lastImport;
+    if (!record) return;
+    state.undoConfirming = false; state.applying = true; state.stopRequested = false; state.runKind = 'undo';
+    state.plan = null; state.fileName = ''; state.lastFile = null; state.fileNote = '';
+    state.progress = { done: 0, total: record.items.length };
+    state.focusAfterRender = 'cfi-progress-title';
+    render();
+    const results = await apply.undoAll(canvas, courseId, record, state.assignmentsById,
+      (done, total) => { state.progress = { done, total }; updateProgress(); },
+      () => state.stopRequested);
+    // Keep only what still needs undoing (e.g. after Stop or errors), so it can be retried.
+    const doneKeys = new Set(results.filter((r) => r.status === 'done' || r.status === 'skipped').map((r) => r.key));
+    await saveLastImport(Object.assign({}, record, { items: record.items.filter((it) => !doneKeys.has(it.key)) }));
+    state.applying = false;
+    state.results = results;
+    state.focusAfterRender = 'cfi-results-title';
+    render();
+    say(`Undo finished. ${results.filter((r) => r.status === 'done').length} of ${record.items.length} undone.`);
   }
 
   function progressView() {
     const { done, total } = state.progress;
     return h('section', { class: 'box' },
-      h('h3', { id: 'cfi-progress-title', tabindex: '-1' }, 'Posting to Canvas'),
+      h('h3', { id: 'cfi-progress-title', tabindex: '-1' }, state.runKind === 'undo' ? 'Undoing the import' : 'Importing to Canvas'),
       h('div', { class: 'bar', role: 'progressbar', 'aria-labelledby': 'cfi-progress-title', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(done) },
         h('div', { class: 'fill', style: `width:${total ? (100 * done / total) : 0}%` })),
       h('p', { class: 'muted', id: 'cfi-progress-text' }, `${done} of ${total} done. Keep this tab open.`),
@@ -598,27 +704,42 @@
   }
 
   const STATUS_LABEL = {
-    done: 'Posted and checked', skipped: 'Already in Canvas', conflict: 'Changed in Canvas meanwhile, left alone',
-    failed: 'Didn\'t go through', unverified: 'Needs a quick check', not_started: 'Not posted (stopped)',
+    import: {
+      done: 'Imported and checked', skipped: 'Already in Canvas', conflict: 'Changed in Canvas meanwhile, left alone',
+      failed: 'Didn\'t go through', unverified: 'Needs a quick check', not_started: 'Not imported (stopped)',
+    },
+    undo: {
+      done: 'Undone', skipped: 'Left as is', conflict: 'Left as is', failed: 'Couldn\'t undo', unverified: 'Needs a quick check', not_started: 'Not undone (stopped)',
+    },
   };
 
   function resultsView() {
     const r = state.results;
+    const kind = state.runKind === 'undo' ? 'undo' : 'import';
+    const labels = STATUS_LABEL[kind];
     const by = {};
     r.forEach((x) => { (by[x.status] = by[x.status] || []).push(x); });
     const problems = r.filter((x) => !['done', 'skipped'].includes(x.status));
+    const notes = kind === 'undo' ? r.filter((x) => x.status === 'skipped' || (x.status === 'done' && /;/.test(x.message))) : [];
     const done = by.done || [];
     const hiddenAssignments = [];
-    for (const x of done) {
-      const a = state.assignmentsById[x.change.assignmentId];
-      if (a && !x.change.visibleNow && !hiddenAssignments.includes(a)) hiddenAssignments.push(a);
+    if (kind === 'import') {
+      for (const x of done) {
+        const a = state.assignmentsById[x.change.assignmentId];
+        if (a && !x.change.visibleNow && !hiddenAssignments.includes(a)) hiddenAssignments.push(a);
+      }
     }
+    const verb = kind === 'undo' ? 'undone' : 'imported';
+    const again = () => {
+      state.results = null; state.plan = null; state.fileName = ''; state.lastFile = null; state.fileNote = ''; state.undoConfirming = false;
+      state.focusAfterRender = 'cfi-file'; render();
+    };
     return [
       r.abortReason ? errorBox(r.abortReason) : null,
       h('section', { class: 'summary' },
-        h('h3', { class: 'big', id: 'cfi-results-title', tabindex: '-1' }, problems.length ? `${done.length} of ${r.length} posted` : 'All posted'),
-        h('ul', { class: 'facts' }, Object.keys(STATUS_LABEL).filter((k) => by[k]).map((k) =>
-          h('li', { class: 'st-' + k }, `${STATUS_LABEL[k]}: ${by[k].length}`)))),
+        h('h3', { class: 'big', id: 'cfi-results-title', tabindex: '-1' }, problems.length ? `${done.length} of ${r.length} ${verb}` : (kind === 'undo' ? 'Import undone' : 'All imported')),
+        h('ul', { class: 'facts' }, Object.keys(labels).filter((k) => by[k]).map((k) =>
+          h('li', { class: 'st-' + k }, `${labels[k]}: ${by[k].length}`)))),
       hiddenAssignments.length ? h('section', { class: 'box' },
         h('h3', null, 'Students can\'t see these yet'),
         h('p', { class: 'small' }, `${hiddenAssignments.map((a) => `"${a.name}"`).join(', ')} ${hiddenAssignments.length === 1 ? 'is' : 'are'} set to post grades manually. When you're ready, post grades from the Gradebook.`),
@@ -628,13 +749,16 @@
         h('ul', null, problems.map((x) => h('li', { class: x.status === 'unverified' ? 'warning' : 'error' },
           h('span', { class: 'row' }, `Row ${x.change.row}`), `${x.change.studentName}, ${x.change.assignmentName}: ${x.message} `,
           h('a', { href: speedGraderUrl(x.change.assignmentId, x.change.studentId), target: '_blank', rel: 'noopener' }, 'Open in SpeedGrader'))))) : null,
+      notes.length ? h('section', { class: 'box issues' },
+        h('h3', null, 'Left alone'),
+        h('ul', null, notes.map((x) => h('li', { class: 'warning' }, `${x.change.studentName}, ${x.change.assignmentName}: ${x.message}`)))) : null,
+      kind === 'import' && state.lastImport && state.lastImport.items.length ? h('section', { class: 'box last' },
+        h('p', { class: 'small' }, 'Imported the wrong thing? Undo puts back the grades and comments from before this import.'),
+        undoArea()) : null,
       h('div', { class: 'actions' },
-        h('button', { class: 'ghost', id: 'cfi-results-dl', onclick: () => download(`${safeName(courseLabel())}_feedback_results_${today()}.csv`, apply.resultsToRows(r)) }, 'Download a record'),
-        h('button', { class: 'primary', id: 'cfi-again', onclick: () => {
-          state.results = null; state.plan = null; state.fileName = ''; state.lastFile = null; state.fileNote = '';
-          state.focusAfterRender = 'cfi-file'; render();
-        } }, 'Upload another file')),
-      h('p', { class: 'muted small' }, 'Uploading the same file again is safe. Anything already in Canvas is skipped.'),
+        kind === 'import' ? h('button', { class: 'ghost', id: 'cfi-results-dl', onclick: () => download(`${safeName(courseLabel())}_feedback_results_${today()}.csv`, apply.resultsToRows(r)) }, 'Download a record') : null,
+        h('button', { class: 'primary', id: 'cfi-again', onclick: again }, 'Upload a file')),
+      kind === 'import' ? h('p', { class: 'muted small' }, 'Uploading the same file again is safe. Anything already in Canvas is skipped.') : null,
     ];
   }
 

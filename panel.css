@@ -163,3 +163,21 @@ select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 10px; b
 .issues li a { color: inherit; font-weight: 600; }
 h2.course { margin: 0; }
 h2.course:focus, h3:focus, p:focus { outline: none; }
+
+/* v0.4 */
+.foot:not(.confirm) { justify-content: space-between; }
+.mode { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 10px; margin: 8px 0 4px; background: var(--card); }
+.mode legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
+.radio { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; cursor: pointer; }
+.radio input { margin-top: 3px; }
+.block { display: block; }
+.replace-label { margin-top: 4px; font-size: 12px; font-weight: 600; color: #6b3fa0; }
+.comment.old { background: transparent; border: 1px dashed var(--line); color: var(--muted); margin-top: 2px; }
+.replace-fact { color: #6b3fa0; font-weight: 600; }
+.last { display: flex; flex-direction: column; gap: 4px; }
+.last p { margin: 0 0 6px; }
+.last > button { align-self: flex-start; }
+.undo-confirm { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+.undo-confirm p { margin: 0 0 6px; }
+.undo-confirm .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.primary.danger { background: var(--bad); }
