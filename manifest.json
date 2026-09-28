@@ -3,7 +3,7 @@
   "name": "Canvas Feedback Import",
   "short_name": "Feedback Import",
   "version": "0.4.0",
-  "description": "Post grades and written feedback to Canvas from a CSV, with a preview before anything is saved. UBC Canvas only.",
+  "description": "Import grades and written feedback to Canvas from a CSV, with a preview before anything is saved. UBC Canvas only.",
   "action": {
     "default_title": "Canvas Feedback Import",
     "default_popup": "popup.html",

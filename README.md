@@ -2,7 +2,7 @@
 
 Chrome extension for importing grades and written feedback from a CSV into UBC Canvas. Review each change before importing. Canvas's standard gradebook import accepts scores but does not import submission comments.
 
-The extension runs on `canvas.ubc.ca` using your Canvas session. It sends requests directly to Canvas and has no external server.
+See [CHANGELOG.md](CHANGELOG.md) for version history. The extension runs on `canvas.ubc.ca` using your Canvas session. It sends requests directly to Canvas and has no external server.
 
 ## Install (unpacked)
 
@@ -119,7 +119,7 @@ Files the tool can read:
 | `lib/plan.js` | Template building and upload checks (pure, tested) |
 | `lib/canvas-api.js` | Canvas REST calls with the session cookie and CSRF token |
 | `lib/apply.js` | Re-check, write, read-back loop, and undo |
-| `tests/` | `node --test tests/*.test.js` (40 unit tests) and `tests/e2e.js` (Chromium plus mocked Canvas, 13 checks) |
+| `tests/` | `npm test` (43 unit tests) and `npm run test:e2e` (Chromium with Playwright against a mocked Canvas, 20 checks) |
 
 ## Check on a real sandbox course before rollout
 

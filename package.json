@@ -1,0 +1,11 @@
+{
+  "name": "canvas-feedback-import",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Chrome extension for UBC Canvas: import grades and written feedback from a CSV.",
+  "author": "V3sr",
+  "scripts": {
+    "test": "node --test tests/logic.test.js tests/apply.test.js",
+    "test:e2e": "node tests/e2e.js"
+  }
+}
