@@ -119,7 +119,7 @@ Files the tool can read:
 | `lib/plan.js` | Template building and upload checks (pure, tested) |
 | `lib/canvas-api.js` | Canvas REST calls with the session cookie and CSRF token |
 | `lib/apply.js` | Re-check, write, read-back loop, and undo |
-| `tests/` | `npm test` (43 unit tests) and `npm run test:e2e` (Chromium with Playwright against a mocked Canvas, 20 checks) |
+| `tests/` | `npm test` (44 unit tests) and `npm run test:e2e` (Chromium with Playwright against a mocked Canvas, 28 checks) |
 
 ## Check on a real sandbox course before rollout
 

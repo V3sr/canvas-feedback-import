@@ -328,7 +328,7 @@
         h('button', { class: 'link', id: 'cfi-clear-picks', onclick: () => { state.exportSelection.clear(); state.focusAfterRender = 'cfi-search'; render(); } }, 'Clear')) : null,
       filtering ? h('div', { class: 'selbar', role: 'status' },
         h('span', { class: 'muted small' }, matches.length ? `${plural(matches.length, 'match', 'matches')}` : 'No matches'),
-        tickable.length > 1 ? h('button', { class: 'link', id: 'cfi-tick-matches', onclick: () => { tickable.forEach((a) => state.exportSelection.add(a.id)); state.focusAfterRender = 'cfi-tick-matches'; render(); } },
+        tickable.length > 1 ? h('button', { class: 'link', id: 'cfi-tick-matches', onclick: () => { tickable.forEach((a) => state.exportSelection.add(a.id)); state.focusAfterRender = 'cfi-search'; render(); } },
           `Tick all ${tickable.length}`) : null,
         h('button', { class: 'link', id: 'cfi-clear-search', onclick: () => { state.exportSearch = ''; state.groupFilter = ''; state.focusAfterRender = 'cfi-search'; render(); } }, 'Clear search')) : null,
       h('ul', { class: 'alist', 'aria-label': 'Assignments' }, list.length ? list.map((a) => {
