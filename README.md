@@ -12,7 +12,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history. The extension runs on `can
 
 ## Workflow
 
-1. **Get template**: tick the assignments you're grading. The list is sorted by due date closest to today, so the lab you're grading is usually at the top.
+1. **Get template**: search or tick the assignments you're grading. Search covers names and assignment groups, ignores accents and leading zeros, and has a group filter and "Tick all matches" for courses with 100+ assignments. Without a search, the list is sorted by due date closest to today.
    - You can limit the template to one section, so each TA gets their own file.
    - "Or download every assignment" is available for anyone who wants everything.
 2. Fill in the spreadsheet during the lab.
@@ -139,6 +139,7 @@ These are Canvas behaviours the code relies on but that haven't been confirmed o
 
 ## Changelog
 
+- **0.5.0**: assignment search for courses with 100+ assignments (word matching, group filter, tick all matches, selected chips).
 - **0.4.0**
   - Comment mode on upload: "Add a new comment" (default, keeps both, for multiple graders) or "Replace your last comment" (edits the uploader's own most recent comment). Replacements are counted in the overview and shown as old text struck through above the new text.
   - Undo the last import (per course, kept in `chrome.storage.local`): restores the previous grades, removes added comments and restores replaced comment text, leaving anything changed since alone.

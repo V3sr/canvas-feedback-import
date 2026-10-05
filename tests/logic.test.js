@@ -335,3 +335,17 @@ test('a real enrolled account named "Test Student" is not skipped', () => {
   assert.strictEqual(p.changes[0].studentId, '9');
   assert.strictEqual(errors(p), '');
 });
+
+test('assignment search: words, accents, leading zeros, group names', () => {
+  const list = [
+    { name: 'Lab 05: Titration', group_name: 'Labs' }, { name: 'Lab 15', group_name: 'Labs' },
+    { name: 'Midterm Exam', group_name: 'Exams' }, { name: 'Réflexion 2', group_name: 'Journals' },
+  ];
+  const find = (q) => list.filter((a) => plan.matchesSearch(a, q)).map((a) => a.name);
+  assert.deepStrictEqual(find('lab 5'), ['Lab 05: Titration']);
+  assert.deepStrictEqual(find('LAB'), ['Lab 05: Titration', 'Lab 15']);
+  assert.deepStrictEqual(find('exams'), ['Midterm Exam']);
+  assert.deepStrictEqual(find('refl'), ['Réflexion 2']);
+  assert.deepStrictEqual(find('tit lab'), ['Lab 05: Titration']);
+  assert.deepStrictEqual(find('  '), list.map((a) => a.name));
+});

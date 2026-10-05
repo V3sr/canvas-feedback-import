@@ -25,6 +25,9 @@ const assignments = [
   { id: '104', position: 4, name: 'Anonymous quiz', points_possible: 5, grading_type: 'points', published: true, anonymous_grading: true, due_at: daysFromNow(2) },
   { id: '105', position: 5, name: 'Midterm', points_possible: 50, grading_type: 'points', published: true, due_at: daysFromNow(-40), use_rubric_for_grading: true },
 ];
+// A big course: 120 extra quizzes with no due date, in their own group.
+for (let i = 1; i <= 120; i++) assignments.push({ id: String(1000 + i), position: 100 + i, name: `Weekly Quiz ${String(i).padStart(2, '0')}`, points_possible: 2, grading_type: 'points', published: true, due_at: null, assignment_group_id: 77 });
+assignments.slice(0, 5).forEach((a) => { a.assignment_group_id = a.name.startsWith('Lab') ? 66 : 55; });
 function daysFromNow(n) { return new Date(Date.now() + n * 86400000).toISOString(); }
 const students = [
   { id: '1', sortable_name: 'Chen, Amy', sis_user_id: '11111111', login_id: 'achen', sec: '9001' },
@@ -52,6 +55,7 @@ async function handle(route) {
   if (p === '/api/v1/courses/555') return json(route, { id: '555', name: 'PHRM 100 Mock', course_code: 'PHRM_V 100 101', workflow_state: 'available' });
   if (p === '/api/v1/users/self') return json(route, { id: '42', name: 'Dr. Test Prof' });
   if (p === '/api/v1/courses/555/assignments') return json(route, assignments);
+  if (p === '/api/v1/courses/555/assignment_groups') return json(route, [{ id: 66, name: 'Labs' }, { id: 55, name: 'Other' }, { id: 77, name: 'Quizzes' }]);
   if (p === '/api/v1/courses/555/sections') return json(route, [{ id: '9001', name: 'L1A' }, { id: '9002', name: 'L1B' }]);
   if (p === '/api/v1/courses/555/enrollments') {
     const page = q.get('page') || '1';
@@ -95,6 +99,7 @@ async function handle(route) {
   return route.fulfill({ status: 404, body: '{}' });
 }
 
+const checks0 = [];
 (async () => {
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfi-profile-'));
   const ctx = await chromium.launchPersistentContext(userDir, {
@@ -124,7 +129,25 @@ async function handle(route) {
   await page.getByText('Which assignments are you grading?').waitFor();
   const order = await page.locator('.alist .aname').allInnerTexts();
   console.log('picker order:', JSON.stringify(order));
-  if (order[0] !== 'Safety check-off' || order[order.length - 1] !== 'Midterm') throw new Error('picker not sorted by due date');
+  if (order[0] !== 'Safety check-off' || order.length !== 8 || order[4] !== 'Midterm') throw new Error('picker not sorted by due date / not truncated: ' + order.join(', '));
+  // Search a 125-assignment course.
+  await page.locator('#cfi-search').fill('quiz 7');
+  const quiz7 = await page.locator('.alist .aname').allInnerTexts();
+  checks0.push(['Search "quiz 7" finds Weekly Quiz 07 only', JSON.stringify(quiz7) === JSON.stringify(['Weekly Quiz 07'])]);
+  await page.locator('#cfi-search').fill('quiz');
+  checks0.push(['Search "quiz" lists 120 weekly quizzes + the anonymous quiz', (await page.locator('.alist .aname').count()) === 121]);
+  await page.locator('#cfi-tick-matches').click();
+  checks0.push(['Tick all matches selects 120', /Selected \(120\)/.test(await page.locator('.picked-row').innerText())]);
+  await page.screenshot({ path: path.join(SHOTS, '1a-search.png') });
+  await page.locator('#cfi-clear-picks').click();
+  await page.locator('#cfi-search').fill('');
+  await page.locator('#cfi-group').selectOption('Labs');
+  const labs = await page.locator('.alist .aname').allInnerTexts();
+  checks0.push(['Group filter shows the two labs', labs.length === 2 && labs.every((n) => n.startsWith('Lab'))]);
+  await page.locator('#cfi-clear-search').click();
+  await page.locator('#cfi-search').fill('lab 2');
+  checks0.push(['Search "lab 2" finds Lab 2, Titration', JSON.stringify(await page.locator('.alist .aname').allInnerTexts()) === JSON.stringify(['Lab 2, Titration'])]);
+  await page.locator('#cfi-search').fill('');
   if (!(await page.locator('#cfi-a-104').isDisabled())) throw new Error('anonymous should be disabled');
   await page.locator('#cfi-a-103').check();
   await page.locator('#cfi-a-101').check();
@@ -183,7 +206,7 @@ async function handle(route) {
 
   // Verify Canvas mock state.
   const c = (k) => subs[k].submission_comments.map((x) => x.comment);
-  const checks = [
+  const checks = [...checks0,
     ['Amy grade 8.5', subs['101:1'].score === 8.5],
     ['Amy multiline comment', c('101:1')[0] === 'Good technique.\nLabel your flasks next time.'],
     ['Sam grade changed by TA is protected', subs['101:2'].score === 5],

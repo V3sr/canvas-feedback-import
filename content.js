@@ -84,6 +84,7 @@
     // export
     exportSelection: new Set(),
     exportSearch: '',
+    groupFilter: '',
     showAllAssignments: false,
     sectionFilter: '',
     includeGrades: true,
@@ -292,21 +293,44 @@
     if (!state.assignments) return h('p', { class: 'muted pad' }, 'Loading assignments…');
 
     const sorted = planLib.sortForPicker(state.assignments);
-    const q = state.exportSearch.trim().toLowerCase();
-    let list = q ? sorted.filter((a) => a.name.toLowerCase().includes(q)) : sorted;
-    const truncated = !q && !state.showAllAssignments && list.length > PICKER_SHORT;
-    if (truncated) list = list.slice(0, PICKER_SHORT);
+    const q = state.exportSearch.trim();
+    const groups = Array.from(new Set(state.assignments.map((a) => a.group_name).filter(Boolean))).sort((x, y) => x.localeCompare(y));
+    const filtering = !!q || !!state.groupFilter;
+    const matches = sorted.filter((a) => (!state.groupFilter || a.group_name === state.groupFilter) && planLib.matchesSearch(a, q));
+    const truncated = !filtering && !state.showAllAssignments && matches.length > PICKER_SHORT;
+    const list = truncated ? matches.slice(0, PICKER_SHORT) : matches;
     const count = state.exportSelection.size;
     const supportedCount = state.assignments.filter((a) => !supportIssue(a)).length;
+    const tickable = matches.filter((a) => !supportIssue(a) && !state.exportSelection.has(a.id));
+    const picked = state.assignments.filter((a) => state.exportSelection.has(a.id));
+    const showTools = state.assignments.length > 5;
 
     return [
       concludedBanner(),
       state.alert ? errorBox(state.alert) : null,
       h('h3', { class: 'q' }, 'Which assignments are you grading?'),
-      h('p', { class: 'muted small' }, 'Closest due dates are at the top. Pick one or more.'),
-      state.assignments.length > PICKER_SHORT ? h('input', {
-        id: 'cfi-search', class: 'search', type: 'search', placeholder: 'Search assignments', 'aria-label': 'Search assignments',
-        value: state.exportSearch, oninput: (e) => { state.exportSearch = e.target.value; render(); } }) : null,
+      h('p', { class: 'muted small' }, filtering ? 'Search by name or assignment group. Pick one or more.' : 'Closest due dates are at the top. Search or pick one or more.'),
+      showTools ? h('div', { class: 'toolbar picker-tools' },
+        h('input', {
+          id: 'cfi-search', class: 'search', type: 'search', placeholder: `Search ${state.assignments.length} assignments`, 'aria-label': 'Search assignments',
+          autocomplete: 'off', value: state.exportSearch,
+          oninput: (e) => { state.exportSearch = e.target.value; render(); },
+          onkeydown: (e) => { if (e.key === 'Escape' && state.exportSearch) { e.stopPropagation(); state.exportSearch = ''; render(); } } }),
+        groups.length > 1 ? h('select', { id: 'cfi-group', 'aria-label': 'Assignment group',
+          onchange: (e) => { state.groupFilter = e.target.value; state.focusAfterRender = 'cfi-group'; render(); } },
+          h('option', { value: '' }, 'All groups'),
+          groups.map((g) => h('option', { value: g, selected: state.groupFilter === g ? 'selected' : null }, g))) : null) : null,
+      picked.length ? h('div', { class: 'picked-row', 'aria-label': 'Selected assignments' },
+        h('span', { class: 'muted small' }, `Selected (${picked.length}):`),
+        picked.slice(0, 6).map((a) => h('span', { class: 'pill' }, a.name,
+          h('button', { class: 'pill-x', 'aria-label': `Remove ${a.name}`, onclick: () => { state.exportSelection.delete(a.id); render(); } }, '×'))),
+        picked.length > 6 ? h('span', { class: 'muted small' }, `+${picked.length - 6} more`) : null,
+        h('button', { class: 'link', id: 'cfi-clear-picks', onclick: () => { state.exportSelection.clear(); state.focusAfterRender = 'cfi-search'; render(); } }, 'Clear')) : null,
+      filtering ? h('div', { class: 'selbar', role: 'status' },
+        h('span', { class: 'muted small' }, matches.length ? `${plural(matches.length, 'match', 'matches')}` : 'No matches'),
+        tickable.length > 1 ? h('button', { class: 'link', id: 'cfi-tick-matches', onclick: () => { tickable.forEach((a) => state.exportSelection.add(a.id)); state.focusAfterRender = 'cfi-tick-matches'; render(); } },
+          `Tick all ${tickable.length}`) : null,
+        h('button', { class: 'link', id: 'cfi-clear-search', onclick: () => { state.exportSearch = ''; state.groupFilter = ''; state.focusAfterRender = 'cfi-search'; render(); } }, 'Clear search')) : null,
       h('ul', { class: 'alist', 'aria-label': 'Assignments' }, list.length ? list.map((a) => {
         const issue = supportIssue(a);
         const id = 'cfi-a-' + a.id;
@@ -318,11 +342,12 @@
             h('span', { class: 'ameta' },
               h('span', null, dueLabel(a)),
               h('span', null, a.grading_type === 'points' ? `${a.points_possible ?? 0} pts` : a.grading_type === 'pass_fail' ? 'Complete/incomplete' : a.grading_type.replace(/_/g, ' ')),
+              a.group_name && groups.length > 1 ? h('span', null, a.group_name) : null,
               issue ? h('span', { class: 'chip bad' }, issue) : cautionChips(a).map((c) => h('span', { class: 'chip warn' }, c)))));
-      }) : h('li', { class: 'muted' }, 'No assignments match.')),
+      }) : h('li', { class: 'muted' }, filtering ? 'No assignments match. Try fewer words, or a different group.' : 'This course has no assignments.')),
       truncated ? h('button', { class: 'link', id: 'cfi-showall', onclick: () => { state.showAllAssignments = true; state.focusAfterRender = 'cfi-showall-less'; render(); } },
         `Show all ${state.assignments.length} assignments`) : null,
-      !truncated && !q && state.showAllAssignments && state.assignments.length > PICKER_SHORT
+      !truncated && !filtering && state.showAllAssignments && state.assignments.length > PICKER_SHORT
         ? h('button', { class: 'link', id: 'cfi-showall-less', onclick: () => { state.showAllAssignments = false; render(); } }, 'Show fewer') : null,
 
       h('div', { class: 'opts' },

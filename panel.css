@@ -181,3 +181,12 @@ h2.course:focus, h3:focus, p:focus { outline: none; }
 .undo-confirm p { margin: 0 0 6px; }
 .undo-confirm .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
 .primary.danger { background: var(--bad); }
+
+/* v0.5: picker search */
+.picker-tools { position: sticky; top: -14px; z-index: 2; background: var(--glass); padding: 6px 0 2px; margin: 0 0 4px; }
+.picker-tools select { max-width: 42%; }
+.picked-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 4px 3px 10px; border-radius: 999px; background: rgba(11, 92, 173, .1); color: var(--accent); font-size: 12.5px; font-weight: 550; overflow-wrap: anywhere; }
+.pill-x { border: 0; background: transparent; color: inherit; font-size: 15px; line-height: 1; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; }
+.pill-x:hover { background: rgba(11, 92, 173, .18); }
+.selbar .link + .link { margin-left: 4px; }

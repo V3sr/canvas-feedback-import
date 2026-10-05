@@ -2,6 +2,17 @@
 
 Versions 0.1.0 to 0.3.0 were developed on September 28, 2026 and are documented below. Saved Git history begins at v0.3.1.
 
+## [0.5.0] - 2026-10-05
+
+Better assignment search for big courses (some have over 100 assignments).
+
+- The search box is always shown when a course has more than 5 assignments, and its placeholder says how many there are.
+- Search ignores case, accents and punctuation, and every word you type has to match. Numbers match without leading zeros, so "lab 5" finds "Lab 05". It also searches assignment group names.
+- An assignment group filter (for example Labs or Quizzes).
+- Search results show a match count, with "Tick all N" to select every match at once, and "Clear search".
+- Selected assignments appear as removable chips above the list, with a Clear link, so a choice isn't lost when the search changes.
+- Each assignment row shows its group name.
+
 ## [0.4.0] - 2026-09-28
 
 - Choose what happens when you already left a comment for a student:
